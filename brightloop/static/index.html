@@ -1,0 +1,51 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Brightloop Billing</title>
+<style>
+:root{--bg:#f6f7f4;--ink:#1d2a2a;--mut:#667;--ln:#d9dcd6;--acc:#0f6b5c;--bad:#b3261e;font-family:system-ui,sans-serif}
+@media(prefers-color-scheme:dark){:root{--bg:#141a19;--ink:#e8ece9;--mut:#9aa;--ln:#2c3634;--acc:#4fc3a8;--bad:#ff8a80}}
+body{margin:0;background:var(--bg);color:var(--ink)}header{display:flex;gap:1rem;align-items:center;padding:.8rem 1.2rem;border-bottom:1px solid var(--ln)}
+header b{font-size:1.2rem;margin-right:auto}nav{display:flex;gap:.3rem;flex-wrap:wrap;padding:.6rem 1.2rem}
+button,input,select{font:inherit;padding:.4rem .7rem;border:1px solid var(--ln);border-radius:6px;background:transparent;color:var(--ink)}
+button{cursor:pointer}button.on,button.p{background:var(--acc);color:#fff;border-color:var(--acc)}button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--acc)}
+main{padding:1rem 1.2rem}table{border-collapse:collapse;width:100%;font-size:.9rem}td,th{padding:.45rem .6rem;border-bottom:1px solid var(--ln);text-align:left}
+.box{max-width:340px;margin:12vh auto;display:grid;gap:.6rem}.kpi{display:flex;gap:2rem;flex-wrap:wrap;margin-bottom:1rem}.kpi div{font-size:1.7rem}.kpi small{display:block;font-size:.8rem;color:var(--mut)}
+.err{color:var(--bad)}form{display:flex;gap:.5rem;flex-wrap:wrap;margin:.8rem 0}.scroll{overflow-x:auto}
+</style></head><body><div id="app"></div><script>
+let T=localStorage.t,R=localStorage.r;const $=s=>document.querySelector(s),app=$('#app');
+async function api(p,m='GET',b){const r=await fetch('/api/'+p,{method:m,headers:{'Content-Type':'application/json',Authorization:'Bearer '+T},body:b?JSON.stringify(b):undefined});
+ const j=await r.json().catch(()=>({}));if(!r.ok){if(r.status==401&&T){logout();}throw new Error(j.detail||'Something went wrong')}return j}
+function logout(){localStorage.clear();T=R=null;auth()}
+function auth(){const rt=new URLSearchParams(location.search).get('reset');
+ app.innerHTML=`<div class=box><h2>Brightloop Billing</h2>${rt?`<input id=pw type=password placeholder="New password"><button class=p id=go>Set new password</button>`:
+ `<input id=nm placeholder="Name (for new accounts)"><input id=em type=email placeholder=Email><input id=pw type=password placeholder=Password>
+ <button class=p id=go>Log in</button><button id=reg>Create account</button><button id=fg>Email me a reset link</button>`}<div class=err id=e></div></div>`;
+ const say=m=>$('#e').textContent=m, sess=r=>{T=localStorage.t=r.token;R=localStorage.r=r.role;main()};
+ $('#go').onclick=()=>rt?api('auth/reset','POST',{token:rt,password:$('#pw').value}).then(()=>{location.href='/'}).catch(e=>say(e.message)):api('auth/login','POST',{email:$('#em').value,password:$('#pw').value}).then(sess).catch(e=>say(e.message));
+ if(!rt){$('#reg').onclick=()=>api('auth/register','POST',{name:$('#nm').value,email:$('#em').value,password:$('#pw').value}).then(sess).catch(e=>say(e.message));
+ $('#fg').onclick=()=>api('auth/forgot','POST',{email:$('#em').value}).then(r=>say(r.message)).catch(e=>say(e.message))}}
+const TABS={admin:['Dashboard','Subscriptions','Invoices','Payments','Products','Plans','Taxes','Discounts','Templates','Staff'],staff:['Dashboard','Subscriptions','Invoices','Payments','Templates'],customer:['Subscriptions','Invoices']};
+function main(){if(!T)return auth();app.innerHTML=`<header><b>Brightloop</b><span>${R}</span><button id=lo>Log out</button></header><nav id=nav></nav><main id=m></main>`;$('#lo').onclick=logout;
+ $('#nav').innerHTML=TABS[R].map(t=>`<button data-t=${t}>${t}</button>`).join('');$('#nav').onclick=e=>e.target.dataset.t&&tab(e.target.dataset.t);tab(TABS[R][0])}
+function table(rows,cols,acts){if(!rows.length)return'<p>Nothing here yet.</p>';return`<div class=scroll><table><tr>${cols.map(c=>`<th>${c}</th>`).join('')}<th></th></tr>${rows.map(r=>`<tr>${cols.map(c=>`<td>${r[c]??''}</td>`).join('')}<td>${(acts?acts(r):'')}</td></tr>`).join('')}</table></div>`}
+function formFor(fields,onsub,label='Add'){const f=document.createElement('form');f.innerHTML=fields.map(x=>`<input name=${x} placeholder="${x.replace('_',' ')}">`).join('')+`<button class=p>${label}</button><span class=err></span>`;
+ f.onsubmit=async e=>{e.preventDefault();const b={};fields.forEach(k=>{const v=f[k].value;if(v!=='')b[k]=isNaN(v)||/date/.test(k)?v:+v});try{await onsub(b)}catch(x){f.querySelector('.err').textContent=x.message}};return f}
+const CRUD={Products:['products',['name','type','sales_price','cost_price','notes']],Plans:['plans',['name','price','billing_period','min_qty','start_date','end_date','auto_close','closable','pausable','renewable']],
+ Taxes:['taxes',['name','rate']],Discounts:['discounts',['name','kind','value','min_purchase','min_qty','start_date','end_date','usage_limit','product_id']],Templates:['templates',['name','plan_id','validity_days']]};
+async function tab(t){document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t==t));const m=$('#m');m.innerHTML='Loading…';
+ try{
+ if(t=='Dashboard'){const d=await api('dashboard');m.innerHTML=`<div class=kpi><div>${d.active_subscriptions}<small>Active subscriptions</small></div><div>${d.monthly_recurring_revenue}<small>Monthly recurring revenue</small></div><div>${d.revenue_collected}<small>Revenue collected</small></div><div>${d.outstanding}<small>Still owed</small></div><div class=err>${d.overdue_count}<small>Overdue invoices</small></div></div>
+  <h3>Overdue invoices</h3>${table(d.overdue_invoices,['number','customer','total','due_date'])}<h3>Payments by method</h3>${table(d.payments_by_method,['method','total'])}`}
+ else if(t=='Subscriptions'){const r=await api('subscriptions/view/list');const acts=s=>R=='customer'?'':({Draft:['quote'],Quotation:['confirm'],Confirmed:['activate'],Active:['pause','close','renew'],Paused:['resume','close']}[s.status]||[]).map(a=>`<button data-a=${a} data-id=${s.id}>${a}</button>`).join('');
+  m.innerHTML=(R=='customer'?'':'<div id=f></div>')+table(r,['number','customer_name','plan_name','start_date','expiry_date','status'],acts);
+  if(R!='customer'){$('#f').append(formFor(['customer_id','plan_id','template_id','start_date'],b=>api('subscriptions','POST',b).then(()=>tab(t)),'New subscription'))}
+  m.onclick=e=>e.target.dataset.a&&api(`subscriptions/${e.target.dataset.id}/${e.target.dataset.a}`,'POST').then(()=>tab(t)).catch(x=>alert(x.message))}
+ else if(t=='Invoices'){const r=await api('invoices/view/list');const acts=i=>`<button data-a=print data-id=${i.id}>print</button>`+(R=='customer'?'':({Draft:['confirm','cancel','send'],Confirmed:['cancel','send']}[i.status]||[]).map(a=>`<button data-a=${a} data-id=${i.id}>${a}</button>`).join(''));
+  m.innerHTML=(R=='customer'?'':'<button class=p id=g>Generate due invoices</button> <button id=od>Show overdue only</button>')+table(r,['number','customer_name','period_start','total','paid','balance','due_date','status'],acts);
+  if(R!='customer'){$('#g').onclick=()=>api('invoices/generate','POST').then(r=>{alert(r.created+' invoices created');tab(t)});$('#od').onclick=async()=>{const o=await api('invoices/view/list?overdue=true');m.querySelector('.scroll').outerHTML=table(o,['number','customer_name','total','balance','due_date','status'])}}
+  m.onclick=e=>{const a=e.target.dataset.a,id=e.target.dataset.id;if(!a)return;if(a=='print')return window.open(`/api/invoices/${id}/print?`,'_blank'),0;api(`invoices/${id}/${a}`,'POST').then(()=>tab(t)).catch(x=>alert(x.message))}}
+ else if(t=='Payments'){m.innerHTML='<div id=f></div>'+table(await api('payments/view/list'),['invoice','method','amount','date','note']);$('#f').append(formFor(['invoice_id','method','amount','date','note'],b=>api('payments','POST',b).then(()=>tab(t)),'Record payment'))}
+ else if(t=='Staff'){m.innerHTML='<div id=f></div>';$('#f').append(formFor(['name','email','password'],b=>api('staff','POST',b).then(()=>alert('Staff member added')),'Add staff'))}
+ else{const[p,cols]=CRUD[t];m.innerHTML=(R=='admin'||t=='Templates'?'<div id=f></div>':'')+table(await api(p),['id',...cols],r=>R=='admin'?`<button data-id=${r.id}>delete</button>`:'');
+  if($('#f'))$('#f').append(formFor(cols,b=>api(p,'POST',b).then(()=>tab(t))));m.onclick=e=>e.target.dataset.id&&api(`${p}/${e.target.dataset.id}`,'DELETE').then(()=>tab(t)).catch(x=>alert(x.message))}
+ }catch(e){m.innerHTML=`<p class=err>${e.message}</p>`}}
+main();
+</script></body></html>
